@@ -1,0 +1,70 @@
+# Homework 3
+## Anamika Das
+========================================================
+
+```{r, echo = FALSE, include=FALSE}
+packages = c("ggplot2","arm", "AER","reshape2","dplyr","xlsx", "stringr", "foreign")             
+lapply(packages, library, character.only = TRUE)
+
+```
+
+
+```{r, include=FALSE}
+setwd("~/Documents")
+
+```
+
+```{r}
+counties = c("Adams", "Asotin", "Benton", "Chelan", "Clallam", "Clark",
+"Columbia", "Cowlitz", "Douglas", "Ferry", "Franklin", "Garfield",
+"Grant", "Grays Harbor", "Island", "Jefferson", "King", "Kitsap",
+"Kittitas", "Klickitat", "Lewis", "Lincoln", "Mason", "Okanogan",
+"Pacific", "Pend Oreille", "Pierce", "San Juan", "Skagit", "Skamania",
+"Snohomish", "Spokane", "Stevens", "Thurston", "Wahkiakum", "Walla Walla",
+"Whatcom", "Whitman", "Yakima")
+
+base.url = "http://www.ofm.wa.gov/sac/cjdatabook/"
+counties <- str_replace(counties, " ","")      
+county4<-substr(counties,1,4)
+county4.xlsx<-paste(county4,".xlsx",sep= "")
+full.url<-matrix(paste(base.url,county4.xlsx,sep= ""))
+```
+
+```{r}
+ i<-1
+for (i in 1: nrow(full.url)){
+      download.file(url=full.url[i], destfile= county4.xlsx[i],mode = "wb")
+      i<-i+1
+      }
+```
+
+
+  
+```{r}
+crime.dat <-function(filename, county){
+        data1<- cbind(read.xlsx(filename,sheetIndex=1,
+                startRow=18,endRow=26,colClasses=c(rep("character",25))),
+                "county"= as.character(rep(county,8)))  
+      return(data1)
+  }
+
+i<-1
+crimedata<-list()
+for (i in 1:length(county4)){
+  crimedata[i]<-list(crime.dat(county4.xlsx[i],county4[i]))
+  i<-i+1
+}
+
+crime = do.call(rbind, crimedata)
+
+murderyear<-crime %>% filter(Calendar.Year=="Murder")
+murderyear<-melt(murderyear[ ,-1], id= "county", variable="Year")
+murderyear$Year<-str_replace(murderyear$Year, pattern="X", replacement= "")
+murderyear$county<-as.character(murderyear$county)
+
+c12<-unique(murderyear$county)[1:12]
+murderyear<-murderyear %>% filter(county == c12)
+
+ggplot(murderyear, aes(x = Year, y =value)) + geom_point()+ facet_wrap(~county)
+
+```

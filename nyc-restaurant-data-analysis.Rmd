@@ -1,0 +1,98 @@
+---
+title: "nyc-restaurant-data-analysis"
+author: "Anamika, Will, Tracy, Mansi"
+date: "April 15, 2017"
+output: word_document
+---
+
+
+```{r}
+library(openxlsx)
+library(dplyr)
+library(reshape2)
+library(tigerstats)
+library(ggplot2)
+
+setwd("~/Business Intelligence")
+```
+
+```{r}
+nycResturantData<-read.xlsx("Restaurant.xlsx",detectDates = TRUE, rows=1:100000)
+
+nycResturantData<-read.xlsx("Restaurant.xlsx",detectDates = TRUE)
+
+```
+
+```{r}
+sum(is.na(nycResturantData$INSPECTION.TYPE))
+```
+
+Count of inspection types
+
+Our analysis will focus only on inspection ype "Cycle Inspection / Initial Inspection" because every restaurant in new york city is required to undergo a cycle inspection once a year. Restaurants may be insepcted more than once a year if they receive too many violations.
+
+```{r}
+data.frame(xtabs(~nycResturantData$INSPECTION.TYPE)) 
+# Cycle Inspection / Initial Inspection and Cycle Inspection / Re-inspection
+#are most popular types of inspection. Will focus on Initial because
+# scores below certain number will get regraded
+
+#
+initInspectData<-nycResturantData %>% filter(INSPECTION.TYPE=="Cycle Inspection / Initial Inspection") %>% as.data.frame(.)
+unique(initInspectData$INSPECTION.TYPE)
+
+summary(initInspectData)
+```
+
+
+```{r}
+score_na<-initInspectData[which(is.na(initInspectData$SCORE)),]
+
+sum(is.na(initInspectData$SCORE))
+xtabs(~initInspectData$SCORE)
+xtabs(~initInspectData$CRITICAL.FLAG)
+
+
+head(initInspectData)
+hist(initInspectData$SCORE)
+hist(log(initInspectData$SCORE))
+mean(initInspectData$SCORE)
+
+cGrades<-initInspectData[initInspectData$SCORE >=28,]
+
+
+#need to test more
+InspectionByCitical<-dcast(initInspectData,CAMIS+INSPECTION.DATE+SCORE~CRITICAL.FLAG,length)
+initInspectData[initInspectData$CAMIS==41638021,]
+
+InspectionByVCode<-dcast(initInspectData,CAMIS+INSPECTION.DATE+SCORE~VIOLATION.CODE,length)
+
+cGradeInspectionByVCode<-dcast(cGrades,CAMIS+INSPECTION.DATE+SCORE~CRITICAL.FLAG,length)
+
+
+
+ViolationCorrelation<-cor(InspectionByVCode[,3:ncol(InspectionByVCode)])
+ViolationCorrelation[1,]
+
+
+
+l_viocode<-unique(initInspectData[,c("VIOLATION.CODE","VIOLATION.CODE")])
+mod<-lm(SCORE~.,InspectionByVCode[,-c(1:2)])
+summary(mod)
+plot(mod)
+
+x<-sort(mod$coefficients)[60:70]
+names(x)
+names(x)<-gsub("`","", names(x))
+
+i<-which(l_viocode$VIOLATION.CODE %in% names(x))
+
+l_viocode[i,]
+
+modCritical<-lm(SCORE~.,InspectionByCitical[,-c(1:2)])
+summary(modCritical)
+
+
+
+
+```

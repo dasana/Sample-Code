@@ -1,0 +1,379 @@
+---
+title: "Stats Project"
+author: "Anamika Das"
+date: "April 22, 2016"
+output: html_document
+---
+
+
+
+
+```{r,echo=FALSE}
+setwd("")
+```
+
+
+```{r, echo = FALSE, include=FALSE}
+library(dplyr)
+library(reshape2)
+library(ggplot2)
+library(car)
+
+```
+
+
+
+# Introduction
+
+According to UNICEF, the majority of deaths among children under 5 are due to preventable or treatable diseases and conditions. In 2004, 46% of deaths of children under five were in sub-Saharan Africa and 32% were in South Asia. These deaths are often caused by malaria (8%), diarrhea (17%), pneumonia (19%), HIV/AIDS (3%), Measles(4%), etc. (http://www.unicef.org/mdg/mortalitymultimedia/). 
+Decreasing  child mortality rate for countries around the world has been a big focus of the United Nations. As such, one of the Millenium  Development Goal for 2015 was to decrease this rate from the rate measured in 1995 by two two thirds.
+ 
+This project examines how health initiatives have affected mortality rate from 1995-2012, using data from the World Bank. These health initiatives include    
+   -"Nothing but Nets" that provides insecticide-treated anti-malaria nets in Africa ,
+   -The Measles Initiative that vaccinates children against measles
+   -Vaccination against tetanus
+   
+   
+
+## Methods
+
+Data on 114 health and economic measures(known as Indicators) were collected for 248 countries from 1960-2013 by the World Bank. The raw dataset is structured so that each combination of country and Indicator is listed per row and each year is seperated by column.This dataset also includes metadata such as the Income Group and Region of each country, in separate tabs. 
+
+Country.Name: Name of country   
+Country.Code: Unique identifier of the Country.Name. This is a one to one mapping with Country.Name.   
+Indicator.Name : description of the measure collected.   
+Indicator.Code : Unique identifier of the Indictor.Name. This is a one to one mapping with Indicator.Name.          
+
+The Indicator Name of interest is "Mortality rate, under-5 (per 1,000 live births)" (Indicator Code SH.DYN.MORT) because it directly measures Millenium Development Goal 4.
+
+
+
+```{r}
+# Reading the data
+
+health<-openxlsx::read.xlsx("Wb_Health.xlsx",sheet=1, startRow =3,skipEmptyRows = FALSE)
+
+# Metadata
+mtdata<-openxlsx::read.xlsx("Wb_Health.xlsx",sheet=2, startRow =1, skipEmptyRows = FALSE, cols=1:4)
+wbhealth<-health %>% melt(.,id=c("Country.Name","Country.Code","Indicator.Name",
+        "Indicator.Code"), variable.name="Year",value.name="Ratio") 
+# wbhealth$Year <- factor(wbhealth$Year)
+
+```
+
+
+
+## Visualizing Progress
+
+Overall, mortality rate has decreased over the years as the following plots show for 4 randomly selected countries.
+
+```{r, echo=FALSE,message=FALSE,warning=FALSE}
+
+wbhealth<-wbhealth[,-c(2,3)] %>%  dcast(.,Country.Name+Year~ Indicator.Code)
+
+set.seed(100)
+yearplot<-function(v){
+      unqv<-unique(v)
+      i<-sample(1:length(unqv),size=1,replace=FALSE)
+        wbhealth[wbhealth$Country.Name== unqv[i],] %>%
+        ggplot(.,aes(x=Year,y=SH.DYN.MORT))+ 
+        geom_point() + ylab(unqv[i])+ 
+        scale_x_discrete(breaks=c("1960","1970","1980","1990","2000","2010")) 
+      }
+
+
+
+gridExtra::grid.arrange(yearplot(wbhealth$Country.Name),
+            yearplot(wbhealth$Country.Name),
+            yearplot(wbhealth$Country.Name),
+            yearplot(wbhealth$Country.Name))
+
+
+```
+
+
+Mortality Rate Box Plots by Income Level and Year
+
+From the box plots below, mortality rate has declined from 1995-2010 for all income groups.
+
+```{r, echo=FALSE,message=FALSE,warning=FALSE}
+
+wbhealth<-left_join(x=wbhealth,y=mtdata, by="Country.Name")
+wbhealth$Year<-as.numeric(as.character(wbhealth$Year))
+wbhealth$IncomeGroup<-as.factor(wbhealth$IncomeGroup)
+
+wbyear<-wbhealth %>%  filter(Year %in% c(1980,1990,2000,2010))
+ 
+  # filter(Year %in% c(1975,1980,1985,1990,1995,2000,2005,2010))
+
+
+  ggplot(wbyear,aes(x=IncomeGroup,y=SH.DYN.MORT)) + 
+  geom_boxplot(aes(col=factor(IncomeGroup)))+facet_wrap(~Year)+
+  scale_x_discrete(breaks="")+
+  ylab("Mortality rate, under-5 (per 1,000 live births)") 
+```
+  
+Year vs Mortality rates for  20 randomy selected counties 
+```{r}  
+  
+set.seed(4)
+sampint<-sample(length(unique(wbhealth$Country.Name)),20,
+                  replace = FALSE)
+sampcount<-unique(wbhealth$Country.Name)[sampint]
+wbcount<-wbhealth %>% filter(Country.Name %in% sampcount)
+  
+  
+  ggplot(wbcount,aes(x=Year,y=SH.DYN.MORT)) + 
+  geom_point()+facet_wrap(~IncomeGroup)+
+  scale_x_discrete(breaks="")+
+  ylab("Mortality rate, under-5 (per 1,000 live births)") 
+  
+  
+  
+
+```
+
+The visualizions clearly shows that Low Income and Lower Middle Income groups have the largest mortality rates. Due to this finding, this analysis will focus on mortality rates to the countries in Low Income and Lower Middle Income groups.
+
+```{r, message=FALSE,warning=FALSE}
+
+# Table below lists unique number of countries with mortality rate greater than 10% of population in 1995, grouped by Income Level 
+  
+t1<-wbhealth %>% filter(as.numeric(as.character(Year))>1994) %>% 
+            filter(SH.DYN.MORT> 100) %>% 
+            group_by(IncomeGroup) %>% 
+            summarize(Count=length(unique(Country.Name))) %>% as.data.frame(.)
+knitr::kable(t1)
+
+```
+
+
+```{r,message=FALSE,warning=FALSE}
+##Only looking at low and lower middle income countries
+lowyr <- wbhealth  %>%  filter(as.numeric(as.character(Year))>1994 & 
+          as.numeric(as.character(Year))< 2013) %>%
+          filter(IncomeGroup=="Low income" | IncomeGroup== "Lower middle income")         
+
+```
+
+
+
+
+```{r, echo=FALSE,message=FALSE,warning=FALSE}
+
+healthlong<-health %>% melt(.,id=c("Country.Name","Country.Code","Indicator.Name",
+                                   "Indicator.Code"), variable.name="Year",value.name="Ratio")   
+
+# 72% missing data
+nas<-sum(is.na(healthlong$Ratio))/length(healthlong$Ratio)
+
+natable<-function(data,x,y,val){
+  nas<-is.na(data[ ,val])
+  data %>% select_(x, y,val)  %>% mutate("nmiss"=nas) %>%
+    group_by_(x,y) %>% summarise(sum(nmiss)) %>% as.data.frame(.) 
+}  
+  
+
+sum.miss<-natable(healthlong,"Indicator.Name","Year","Ratio")
+sum.miss<-dcast(sum.miss,Indicator.Name~Year)   
+
+
+# filter for years greater than 1995 
+sum.missyr<-sum.miss[,c(1,37:53)]
+sum.missyr<-cbind(sum.missyr,sumna=rowSums(sum.missyr[,-1]))
+sum.missyr<-sum.missyr[order(sum.missyr[,19]),]
+knitr::kable(sum.missyr[c(1,2,100:103,105,110),c(1,5,8,15)], row.names = FALSE)
+
+
+ind.nm.rm<-sum.missyr$Indicator.Name[sum.missyr$sumna>=2579]
+dfmatch<-function(v){
+    t<-healthlong %>% select(Indicator.Name, Indicator.Code) %>% distinct(.)%>% data.frame(.)
+    df<-data.frame()
+    for(i in 1:length(v)){
+        df[i,1]<-v[i]  
+        df[i,2]<-t[t[,1]==v[i],2]
+      }
+    names(df)<-c("name","code")
+  return(df)  
+}
+
+i<-1
+rmind<-data.frame(sapply(X=dfmatch(ind.nm.rm)[,2],function(X) which(X[i]==colnames(lowyr))))
+lowyr<-lowyr[,-rmind[,1]]
+
+lowyr[1:10,1:10]
+
+lowyrmod<-lowyr[complete.cases(lowyr),]
+xvars<-sum.missyr[sum.missyr$sumna<2579,1]
+xind<-data.frame(ind=sapply(X=dfmatch(xvars)[,2],function(X) which(X==colnames(lowyrmod))))
+
+i<-1
+xcode<- vector()
+for(i in 1:length(xvars)){
+xcode[i]<-health %>% filter(Indicator.Name==xvars[i]) %>%
+  select(Indicator.Code) %>% distinct(.)
+}
+
+xcode<-unlist(xcode)
+xmatch<-data.frame(xvars,xcode)
+
+i<-1; xmatch<-data.frame(xmatch,sapply(xcode, function(X) which(colnames(lowyrmod)==X[i])))
+rownames(xmatch)<-NULL
+names(xmatch)<-c(names(xmatch)[1:2], "ind")
+
+```
+
+
+
+I will be using the following variables to determine if the UN health initiatves from 1995 have been effective in reaching child mortality reduction.
+
+
+```{r,warning=FALSE}
+xmatch$xcode<-as.character(xmatch$xcode)
+xmatch<-xmatch %>% filter(xcode %in% c("SH.STA.ACSN","SH.IMM.MEAS","SH.IMM.IDPT", "SH.ANM.CHLD.ZS", "SH.TBS.CURE.ZS", "SH.DYN.AIDS.ZS", "SH.VAC.TTNS.ZS")) %>% select(1,2)
+
+knitr::kable(xmatch, row.names = FALSE)
+
+
+```
+
+
+
+
+Plots of Mortality Rate (Y variable) against the X variables in 2005
+
+```{r, echo=FALSE,message=FALSE,warning=FALSE}
+xv<-as.character(xmatch$xcode)
+
+i<-1
+g<-list()
+for (i in 1:length(xv)){
+  g[[i]]<-lowyrmod  %>% filter(as.numeric(as.character(Year))==2005) %>%
+  ggplot(., aes_string(x=xv[i],y="SH.DYN.MORT")) +geom_point()
+}
+
+gridExtra::grid.arrange(g[[1]],g[[2]],g[[3]],g[[4]],
+            g[[5]],g[[6]],g[[7]],nrow=4) 
+                        
+
+
+```
+
+
+Variable plots
+
+```{r}
+
+pairs(SH.DYN.MORT ~ SH.STA.ACSN+ SH.IMM.MEAS + SH.IMM.IDPT +
++ SH.ANM.CHLD.ZS + SH.TBS.CURE.ZS + SH.DYN.AIDS.ZS+
+SH.VAC.TTNS.ZS,data=lowyrmod)
+
+```
+
+
+## Analysis
+
+Multiple Linear Regression 
+
+The results from the multiple linear regression show that the following variables are significant at 5% alpha level when controlling for year.
+
+SH.IMM.IDPT - Percentage of children ages 12-23 months that recieve vaccinations against diphtheria, pertussis (whooping cough), and tetanus.   
+SH.ANM.CHLD.ZS - Percentage of children under 5 who have anemia      
+SH.DYN.AIDS.ZS -Percentage of people ages 15-49 who are infected with HIV   
+
+The ANOVA F test is an overall test and  shows that at least one variable in the regression is significant variable of mortality rate.
+
+```{r}
+
+modlin <- lm(SH.DYN.MORT ~ Year + SH.STA.ACSN+ SH.IMM.MEAS + SH.IMM.IDPT +
+SH.XPD.PCAP+ SH.ANM.CHLD.ZS + SH.TBS.CURE.ZS + SH.DYN.AIDS.ZS+
+SH.VAC.TTNS.ZS, data=lowyrmod)
+
+
+summary(modlin)
+par(mfrow=c(2,2))
+plot(modlin)
+```
+
+
+The VIF for SH.IMM.MEAS and SH.IMM.IDPT are above 10 which may indicate multicollinearity in these variables. 
+```{r}
+#  VIF to indicate multicollinearity
+vif(modlin)
+
+```
+
+
+Next , the following regression models were  run:   
+ 1.  Reduced Model 1- All variables except SH.IMM.MEAS (percent of chilren who received measles vaccines).    
+ 
+ 2.  Reduced Model 2 All variables except SH.IMM.IDPT (percent of chilren who received vaccines against diphtheria, pertussis (whooping cough), and tetanus).   
+
+ The partial F test was run for (where th full model was the first regression model that was run) :   
+ 1. Full model vs Reduced Model 1 and
+ 2. Full model vs Reduced Model 2    
+ 
+ The results show that the model without measels vaccines but  includes DPT vaccines is a better model than the original model.
+ 
+```{r}
+# Regression removing SH.IMM.IDPT 
+
+modlin2 <- lm(SH.DYN.MORT ~ Year + SH.STA.ACSN+ SH.IMM.MEAS + 
+SH.XPD.PCAP+ SH.ANM.CHLD.ZS + SH.TBS.CURE.ZS + SH.DYN.AIDS.ZS+
+SH.VAC.TTNS.ZS, data=lowyrmod)
+
+# Regression removing SH.IMM.MEAS
+
+modlin3 <- lm(SH.DYN.MORT ~ Year + SH.STA.ACSN+ SH.IMM.IDPT + 
+SH.XPD.PCAP+ SH.ANM.CHLD.ZS + SH.TBS.CURE.ZS + SH.DYN.AIDS.ZS+
+SH.VAC.TTNS.ZS, data=lowyrmod)
+
+anova(modlin, modlin2)
+anova(modlin, modlin3)
+```
+
+
+In the new model (after measles vaccine variable is removed from the full model), the same variables as the full model are significant. With the new model, VIF does not show signs of multicollearity .
+
+```{r}
+summary(modlin3)
+
+vif(modlin3)
+
+```
+
+Longitudinal Data Analysis
+ 
+This data is longitudonal since it contains observations (Yij) on countries over time. I will use an exponential correlation model (AR-1) which represent the correlation between observation ij and ik as:   
+  corr(yij, yik) = correlation^(absolute difference between time j and time k )
+
+
+
+The following model is a linear regression using an AR-1 correlation to model the errors within each country. An AR-1 model takes into consideration the dependence of the errors. 
+```{r, warning = FALSE, message=FALSE}
+
+library(nlme) 
+library(gee)
+
+gls1 <- gls(SH.DYN.MORT ~ Year + SH.STA.ACSN+ SH.IMM.IDPT + 
+SH.XPD.PCAP+ SH.ANM.CHLD.ZS + SH.TBS.CURE.ZS + SH.DYN.AIDS.ZS+
+SH.VAC.TTNS.ZS,data=lowyrmod, corr=corAR1(form=~Year|Country.Name) ,na.action=na.omit)
+
+summary(gls1)
+```
+
+
+
+Conclusion:
+
+The conclusions of this analysis is based on low income and lower-middle income countries and data from 1995-2010.
+
+
+The multiple linear regression model and the longitudinal model share similar results.  The three variables identified to have strong association to mortality rates are SH.IMM.IDPT, SH.ANM.CHLD.ZS, and SH.DYN.AIDS.ZS.     
+
+Increased immunizations against  diphtheria, pertussis (or whooping cough) , and tetanus (Variable SH.IMM.IDPT) is a significant variable in decreasing child mortality rates. An increase in percentage of children with anemia (SH.ANM.CHLD.ZS) is associated with increased mortality rates. Finally a higher percentage of individuals aged 18-49 with  HIV has a significant increase in children's mortality rate. In both models, the last variable also has the highest effect on mortality rates.   
+
+The international community can invest more in the right intiatives to help children in developing countries to live.  Based on past data, the most effective efforts to reduce mortality rates are providing  vaccinations to children,  preventing and treating anemia, and  finally finding ways to pevent occurence of HIV as well providing medication and treatment to indiviuals affected by HIV.  
+
+
+

@@ -1,0 +1,179 @@
+# Homework 5
+## Anamika Das
+========================================================
+
+
+```{r, echo = FALSE, include=FALSE}
+packages = c("MASS","ggplot2","arm", "AER","dplyr","foreign")             
+lapply(packages, library, character.only = TRUE)
+
+```
+
+
+```{r, echo = FALSE, include=FALSE}
+setwd("~/Documents/UW")
+```
+
+
+The backward and forward stepwise regression produce the same model with same variables and coefficients.
+
+
+```{r, results='hide'}
+
+abal<-read.csv("abaloneTrain.csv")
+abalmod<-lm(rings~(length+width+height+meatweight+shellweight)^2,data=abal)
+mod.back = stepAIC(object = abalmod, direction = "backward")
+
+abalnull = lm(rings ~ 1, data = abal)
+mod.for = stepAIC(object = abalnull, scope = ~ (length+width+height+meatweight+shellweight)^2,
+                  direction = "forward")
+
+```
+
+```{r}
+mod.for
+```
+
+Removing the outlier lowered the AIC of the model. 
+```{r}
+#to remove outlier
+abal[abal$height>1, ]
+abal2<-abal[-1217, ]
+```
+
+```{r, results='hide'}
+abalmod2<-lm(rings~(length+width+height+meatweight+shellweight)^2,data=abal2)
+mod.back2 = stepAIC(object = abalmod2, direction = "backward")
+
+
+abalnull2 = lm(rings ~ 1, data = abal2)
+mod.for2 = stepAIC(object = abalnull2, scope = ~ (length+width+height+meatweight+shellweight)^2,
+                  direction = "forward")
+```
+
+With outlier removed
+```{r}
+mod.for2
+```
+
+
+G&H Question1
+```{r}
+
+shotsdist<-function(n){
+  a<-1
+  trial<-vector() 
+  for(a in 1:n){  
+      score<-vector()
+      i<-1     
+      score[i]<-rbinom(1,1,.6)
+       i<-i+1
+      score[i]<-rbinom(1,1,.6)
+        while(sum(score[i],score[i-1])>0){
+          i<-i+1
+          score[i]<-rbinom(1,1,.6)            
+        }  
+    trial[a]<-length(score)
+    a<-a+1
+    }
+  return(trial)
+}
+
+simshots<-shotsdist(100000)
+c(mean=mean(simshots),sd=sd(shotsdist(1000)))     
+hist(shotsdist(1000),freq=FALSE)
+
+```
+
+c. 
+```{r}
+
+shotstable<-function(n){
+      table<-data.frame()  
+      a<-1
+      trial<-vector() 
+      for(a in 1:n){  
+          score<-vector()
+          i<-1     
+          score[i]<-rbinom(1,1,.6)
+           i<-i+1
+          score[i]<-rbinom(1,1,.6)
+            while(sum(score[i],score[i-1])>0){
+              i<-i+1
+              score[i]<-rbinom(1,1,.6)            
+            }  
+        table[a,1]<-length(score)
+        table[a,2]<-sum(score)
+        names(table)<-c("attempts", "successes")
+        a<-a+1
+        }
+      return(table)
+}
+
+d1<-shotstable(1000)
+plot(d1$attempts,d1$successes)
+plot(d1$attempts,d1$successes/d1$attempts)
+
+```
+
+
+(d)
+
+We fail to reject the null hypothesis. The new player is not better than the original player.
+```{r}
+(15-mean(d1$attempts))/sd(d1$attempts)
+```
+
+G&H Question2
+
+```{r}
+    #n1=number of males
+    #n2=number of females
+i<-1
+pbreak<-vector()
+for (i in 1:1000){
+    n1<-rbinom(1,10,.48)
+    n2<-10-n1
+    mw<-rnorm(n1,exp(5.13),exp(.17))
+    fw<-rnorm(n2,exp(4.96),exp(.2))
+    ifelse(sum(mw,fw)>1650,pbreak[i]<-1,pbreak[i]<-0)
+    i<-i+1
+}
+
+sum(pbreak)/1000
+
+````
+
+G&H Question4
+```{r}
+data(TeachingRatings)
+mod<-lm(eval~gender+beauty+age+native, data=TeachingRatings) 
+mod1<-lm(eval~gender+beauty+age+native+native:age, data=TeachingRatings)
+display(mod)
+
+
+
+ceval<-coef(mod)
+preda<- ceval[1]+ceval[2]*1+ceval[3]*0+ceval[4]*0
+predb<-ceval[1]+ceval[3]*-.5+ceval[4]*0
+names(preda)<-NULL
+names(predb)<-NULL
+#Resdiual sd=.53
+inta<-rnorm(1000,preda,.53)
+intb<-rnorm(1000,predb,.53)
+pred.diff<-inta-intb
+hist(pred.diff,freq=FALSE)
+```
+
+Probability Instuctor A has a higher rating
+
+```{r}
+diff<-vector()
+i<-1
+for (i in 1:length(pred.diff))  {
+  ifelse(pred.diff[i]>0, diff[i]<-1,diff[i]<-0)
+  i<-i+1
+}
+sum(diff)/length(diff)
+
+```
