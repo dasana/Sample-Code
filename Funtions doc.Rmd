@@ -1,0 +1,214 @@
+---
+title: "Functions"
+author: "Anamika Das"
+date: "January 24, 2016"
+output: word_document
+---
+
+crimefun: returns a data frame of 2 columns ("Crime" and "Count type") that breaks down the number of released prisoners  for each crime. 
+
+Parameters:   
+v:  the number of released prisoners   
+cmatrix: a data frame in which the first column is the crime and the second is the percent of released prisoners that served time for the crime in column 1. The crimes are: Public order, Drug, Property, Violent.  
+
+
+```{r}
+1. 
+
+crimefun<-function(v, cmatrix){
+    i<-1
+    crimerel<-data.frame()
+    for (i in 1:nrow(cmatrix)){
+      crimerel[i,1]<-cmatrix[i,1]
+      crimerel[i,2]<- cmatrix[i,2]*v
+    }  
+    names(crimerel)<-c("Crime","count")
+    return(crimerel)
+}
+
+```
+
+
+
+recfun: returns a data frame of the number of prisoners that will recidivate per crime in 1 year, 2 years, or 3 years after their release. The number of released prisoners per crime (output from crimefun) is multiplied by the 1 year, 2 year, and 3 year recidivism rate of that crime. 
+
+
+Parameters:    
+df: data frame that gives the number of prisoner released for each crime (this output from crimefun). Column names of df must be "Crime" and "count".   
+rmatrix: data frame that gives the percent of released prisoners that will recidivate by each of the crimes for each time period.   
+
+```{r}
+recfun<-function(df, rmatrix){
+    ry<- ncol(rmatrix)
+    i<-1
+    y<-vector()
+    a<-rmatrix[,"Crime"]
+    r<-list()
+    for (i in 1:4){ #loop runs for each crime type
+      x<-df %>% filter(Crime== a[i]) %>% select(count)  
+      y<-rmatrix %>% filter(Crime== a[i]) %>% select(2:ry)
+      r[[i]]<-cbind(Crime=a[i],as.data.frame(lapply(y,function(z) x[1,1]*as.numeric(as.character(z)))))
+    }
+    do.call("rbind",r)
+} 
+
+```
+
+
+
+newcrfun: returns a data frame of the number of recidivists released in year t that will commit each one of the four crimes and the time (in years) it will take to recidivate    
+
+Parameters:      
+
+df: data frame of the number of prisoners that will recidivate in 1,2 and 3 years after release per crime (output from recfun).   
+t: year of release   
+cmapmatrix: the proportion of recidivists that will commit one of the four crimes based on prior crime.     
+ 
+
+
+```{r}
+newcrfun <- function(df,cmapmatrix,t){ # n is years taken to recidivate (recid1,recid2,recid3 in recidcounts) 
+    q<-list()
+    a<- cmapmatrix[,"Crime"]
+    newcr<-list()
+    i<-1
+    n<-1
+    for (n in 1:3){
+        for (i in 1:4){
+              x<-df %>% filter(Crime== a[i]) %>% select(n+1) # add 1 to n to get column number
+              y <- cmapmatrix %>% filter(Crime == a[i]) %>% select(2:5)
+              q[[i]] <- cbind(Crime= a[i], as.data.frame(lapply(y,function(z) x[1,1]*z)))
+            }
+      newcr[[n]]<-do.call("rbind",q)
+      newcr[[n]]<-cbind(newcr[[n]],trecid=n)
+    }
+
+  newcr<-do.call("rbind", newcr)
+  newcr<-reshape2::melt(newcr, id= c("Crime","trecid"))
+  names(newcr)[2:4] <- c("trecid","newcrime","count")
+
+  newcr$OrigYear<- as.numeric(as.character(t))
+  newcr$newcrime<-as.character(newcr$newcrime)    
+  newcr<-newcr[,-1] #removes column of prior crime 
+  newcr<-na.omit(newcr)
+  return(newcr)
+}
+
+```
+
+
+
+sentdf: assigns sentence lengths to the data frame returned from newcrfun function, based on "newcrime". A proportion of "count" is assigned to a low sentence length and the remaining amount is given a high sentence length such that the expected value of the sentence lengths is the median time served.    
+
+Parameters:   
+df: data frame that maps the new crime of recidivists based on prior crime.    
+
+```{r}
+
+sentdf<-function(df){
+  #sentence lengths
+  low<- sentence %>% filter(Type=="Low")
+  high<-sentence %>% filter(Type=="High")
+  
+  lowsent<-list()
+  i<-1
+  for (i in 1:4){
+    a<-low %>% select(Crime)
+    lowsent[[i]]<- df %>% filter(newcrime==a[i,1]) 
+    lowsent[[i]][,"count"]<-(lowsent[[i]] %>% select(count))* 
+          low[low$Crime==a[i,1],"Allocation"]
+    lowsent[[i]]<-cbind(lowsent[[i]], SentLength=low[low$Crime==a[i,1],"Years"])
+    i<-i+1
+    
+  }    
+  
+  lowsent<-do.call("rbind",lowsent)
+  
+  highsent<-list()
+  i<-1
+  a<-high %>% select(Crime)
+  for (i in 1:4){
+    highsent[[i]]<-df %>% filter(newcrime==a[i,1]) 
+    highsent[[i]][,"count"]<-(highsent[[i]] %>% select(count))*
+                              high[high$Crime==a[i,1],"Allocation"]
+    highsent[[i]]<-cbind(highsent[[i]], SentLength=high[high$Crime==a[i,1],"Years"])
+    i<-i+1
+  }
+  
+  highsent<- do.call("rbind",highsent)
+  
+  recidsmap<-rbind(lowsent,highsent)
+  recidsmap$ReleaseYear<- recidsmap$OrigYear + as.numeric(as.character(recidsmap$SentLength)) + 
+                          recidsmap$trecid      
+  return(recidsmap)
+
+}
+
+
+```
+
+
+runally: runs recfun, newcrfun, and sentdf and adds "Priors" column, in which the values are specified by the user.
+
+Parameters are the same as in the functions above.
+
+```{r}
+
+runally<-function(df,rmatrix,cmapmatrix,yr,priorn) {
+  df2<-recfun(df,rmatrix)
+  df3<-newcrfun(df2,cmapmatrix,yr)
+  ncr<-sentdf(df3)
+  ncr<-cbind(ncr, Priors=priorn)
+  return(ncr)
+}
+
+
+```
+
+
+6.
+
+```{r}
+expfun<-function(rdf){
+    mod<-data.frame()
+    x<-allrel$Year
+    i<-1
+    for (i in 1: nrow(allrel)){
+          mod[i,1]<- data.frame(Year = as.numeric(as.character(allrel[i,1])))
+          mod[i,2]<- allrel %>% filter(Year==x[i]) %>% select(TotalReleased)
+          mod[i,3]<- rdf %>% filter(ReleaseYear==x[i]) %>% 
+                      summarise(allpriors=sum(count))
+          mod[i,4] <- mod[i,2] - mod[i,3]
+          mod[i,5]<-  rdf %>% filter(OrigYear == x[i]) %>% 
+                      filter(Priors <= 1) %>%
+                      summarise(sum(count))
+          mod[i,6]<- rdf %>% filter(OrigYear == x[i]) %>%
+                      filter(Priors >= 2) %>%
+                      summarise(sum(count))
+          mod[i,7] <- mod$TotalReleased[i] - (mod[i,6]+mod[i,5])
+    }			
+	 rdf14 <-rdf %>% select(trecid,count, OrigYear, SentLength) %>%
+       		     mutate(addt = OrigYear+trecid) %>% filter(addt>=2014)
+	 rdf14 <-rdf14  %>% group_by(OrigYear) %>% 		 # prisoners who will recidivate 2014 or
+		   summarise(total = sum(count)) %>%	#later are included as ExPrisoner (of Original Year of Release)		
+		   as.data.frame(.)
+	 mod <- merge(mod,rdf14, by.x="Year", by.y="OrigYear", all=TRUE)
+	mod[is.na(mod)]<-0	
+          
+ 
+   names(mod)[1]<-"Year"
+   names(mod)[4]<-"allnopriors"
+   names(mod)[5]<-"recidsnp"
+   names(mod)[6]<-"recidsp"
+   names(mod)[7]<-"ExPrisoner"
+
+  mod$ExPrisoner<- mod$ExPrisoner + mod$total
+
+  return(mod)        
+
+}        
+
+```
+
+
+
